@@ -1,0 +1,49 @@
+Senior Backend Engineer
+
+Company: CloudTech Inc
+Location: San Francisco, CA (Hybrid)
+Salary: $180k - $220k
+
+About the Role:
+We are seeking a Senior Backend Engineer with 6+ years of experience to join our infrastructure team. You will design, build, and maintain scalable backend services that power our cloud platform serving millions of customers.
+
+Key Responsibilities:
+- Design and implement microservices architecture using Python and Go
+- Optimize PostgreSQL databases and handle complex query optimization
+- Build and maintain REST and GraphQL APIs handling 100k+ requests/second
+- Implement containerization with Docker and Kubernetes orchestration
+- Design and implement CI/CD pipelines using GitLab CI and Jenkins
+- Mentor junior engineers and conduct code reviews
+- Work with AWS services (EC2, Lambda, RDS, S3, SQS)
+- Implement caching strategies using Redis and Memcached
+- Ensure system reliability and implement comprehensive monitoring
+
+Required Qualifications:
+- 6+ years of backend software development experience
+- Expert-level proficiency in Python 3.8+ or Go
+- Strong PostgreSQL skills including query optimization and indexing
+- Deep understanding of microservices and distributed systems
+- Experience with Docker and Kubernetes
+- AWS services (EC2, Lambda, RDS, VPC) proficiency
+- CI/CD pipeline design and implementation
+- Strong understanding of REST API design principles
+- Experience with message queues (RabbitMQ or Kafka)
+- Version control (Git) expertise
+- Strong communication and collaboration skills
+
+Preferred Qualifications:
+- GraphQL API experience
+- Experience with API security and OAuth 2.0
+- Familiarity with monitoring tools (Prometheus, Grafana, ELK)
+- Load balancing and scaling experience
+- Database replication and sharding knowledge
+- Experience with TDD and clean code practices
+- Open source contributions
+
+What We Offer:
+- Competitive salary and stock options
+- Health insurance and 401(k) matching
+- Unlimited PTO
+- Professional development budget
+- Remote work flexibility
+- Collaborative and inclusive team environment

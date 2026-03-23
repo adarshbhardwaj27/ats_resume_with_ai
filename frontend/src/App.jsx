@@ -1,0 +1,130 @@
+import React, { useState } from "react";
+import { InputForm } from "./components/InputForm";
+import { ChangesList } from "./components/ChangesList";
+import { LaTeXPreview } from "./components/LaTeXPreview";
+import { ErrorMessage } from "./components/ErrorMessage";
+import { analyzeResume } from "./services/api";
+import "./index.css";
+
+function App() {
+  const [latex, setLatex] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [changes, setChanges] = useState([]);
+  const [matchScore, setMatchScore] = useState(0);
+  const [keywords, setKeywords] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleAnalyze = async (latexInput, jobDesc) => {
+    setLoading(true);
+    setError("");
+    setChanges([]);
+
+    try {
+      const result = await analyzeResume(latexInput, jobDesc);
+      setChanges(result.changes);
+      setMatchScore(result.matchScore);
+      setKeywords(result.jobKeywords);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyChange = (index) => {
+    const change = changes[index];
+    const updatedLatex = latex.replace(change.original, change.updated);
+    setLatex(updatedLatex);
+
+    // Remove applied change from display
+    const newChanges = changes.filter((_, i) => i !== index);
+    setChanges(newChanges);
+  };
+
+  const handleApplyAllChanges = () => {
+    let updatedLatex = latex;
+    changes.forEach((change) => {
+      updatedLatex = updatedLatex.replace(change.original, change.updated);
+    });
+    setLatex(updatedLatex);
+    setChanges([]); // Clear all changes after applying
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            Resume Tailor
+          </h1>
+          <p className="text-gray-600">
+            AI-powered LaTeX resume optimization for ATS alignment
+          </p>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6">
+            <ErrorMessage error={error} onDismiss={() => setError("")} />
+          </div>
+        )}
+
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Input Section */}
+          <div className="lg:col-span-1 bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Inputs</h2>
+            <InputForm
+              onSubmit={handleAnalyze}
+              loading={loading}
+              latex={latex}
+              jobDescription={jobDescription}
+              onLatexChange={setLatex}
+              onJobDescriptionChange={setJobDescription}
+            />
+          </div>
+
+          {/* Output Section */}
+          <div className="lg:col-span-1 bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+              Analysis Results
+            </h2>
+            {changes.length === 0 && !error ? (
+              <div className="text-gray-500 text-center py-8">
+                <p>Submit your resume and job description to see suggestions</p>
+              </div>
+            ) : (
+              <ChangesList
+                changes={changes}
+                matchScore={matchScore}
+                keywords={keywords}
+                onApplyChange={handleApplyChange}
+                onApplyAll={handleApplyAllChanges}
+              />
+            )}
+          </div>
+
+          {/* LaTeX Preview Section */}
+          <div className="lg:col-span-1">
+            <LaTeXPreview
+              latex={latex}
+              onApplyAll={handleApplyAllChanges}
+              changes={changes}
+            />
+          </div>
+        </div>
+        {/* Footer */}
+        <div className="mt-12 text-center text-gray-500 text-sm">
+          <p>
+            Resume Tailor uses OpenAI to provide minimal, targeted edits to
+            improve ATS alignment
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
