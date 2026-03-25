@@ -5,6 +5,55 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+/**
+ * Repair incomplete/truncated JSON by finding the last complete object
+ */
+function repairIncompleteJSON(jsonString) {
+    // Try to find last complete object by counting braces
+    let braceCount = 0;
+    let lastCompleteIndex = -1;
+    let inString = false;
+    let escapeNext = false;
+
+    for (let i = 0; i < jsonString.length; i++) {
+        const char = jsonString[i];
+
+        if (escapeNext) {
+            escapeNext = false;
+            continue;
+        }
+
+        if (char === '\\') {
+            escapeNext = true;
+            continue;
+        }
+
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (!inString) {
+            if (char === '{' || char === '[') {
+                braceCount++;
+            } else if (char === '}' || char === ']') {
+                braceCount--;
+                if (braceCount === 0) {
+                    lastCompleteIndex = i;
+                }
+            }
+        }
+    }
+
+    // If we found a complete object, use everything up to and including that
+    if (lastCompleteIndex > 0) {
+        return jsonString.substring(0, lastCompleteIndex + 1);
+    }
+
+    // Otherwise, try to add a minimal closing
+    return jsonString;
+}
+
 async function analyzeResume(latexResume, jobDescription) {
     try {
         // Validate inputs
@@ -22,10 +71,10 @@ ${latexResume}
 Job Description:
 ${jobDescription}
 
-Analyze this resume against the job description and provide minimal, specific edits to improve alignment. Return ONLY valid JSON.`;
+Analyze this resume comprehensively against the job description and provide 10-15 in-depth, specific edits to maximize ATS alignment and impact. Suggest improvements for every relevant section. Return ONLY valid JSON.`;
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o',
             messages: [
                 {
                     role: 'system',
@@ -36,19 +85,31 @@ Analyze this resume against the job description and provide minimal, specific ed
                     content: userPrompt,
                 },
             ],
-            temperature: 0.7,
-            max_tokens: 2000,
+            temperature: 0.9,
+            max_tokens: 8000,
         });
 
         const content = response.choices[0].message.content.trim();
 
+        // Remove markdown code fence markers if present
+        let cleanContent = content
+            .replace(/^```(json)?[\s\n]*/i, '') // Remove opening fence
+            .replace(/[\s\n]*```$/i, '') // Remove closing fence
+            .trim();
+
         // Parse and validate JSON response
         let parsedResponse;
         try {
-            parsedResponse = JSON.parse(content);
+            parsedResponse = JSON.parse(cleanContent);
         } catch (e) {
-            console.error('Failed to parse OpenAI response:', content);
-            throw new Error('Invalid JSON response from OpenAI');
+            // Try to repair incomplete JSON
+            try {
+                const repairedContent = repairIncompleteJSON(cleanContent);
+                parsedResponse = JSON.parse(repairedContent);
+            } catch (e2) {
+                console.error('Failed to parse OpenAI response:', cleanContent);
+                throw new Error('Invalid JSON response from OpenAI');
+            }
         }
 
         // Validate response structure
@@ -56,12 +117,17 @@ Analyze this resume against the job description and provide minimal, specific ed
             throw new Error('Invalid response format: missing changes array');
         }
 
-        // Validate each change object
+        // Validate each change object, add default reason if missing
         parsedResponse.changes.forEach((change, index) => {
-            if (!change.original || !change.updated || !change.reason) {
-                throw new Error(
-                    `Invalid change format at index ${index}: missing original, updated, or reason`
-                );
+            if (!change.original || typeof change.original !== 'string') {
+                throw new Error(`Change ${index}: missing or invalid 'original' field`);
+            }
+            if (!change.updated || typeof change.updated !== 'string') {
+                throw new Error(`Change ${index}: missing or invalid 'updated' field`);
+            }
+            // Reason may be missing, provide default
+            if (!change.reason || typeof change.reason !== 'string') {
+                change.reason = 'Improves ATS alignment with job requirements';
             }
         });
 
@@ -102,7 +168,7 @@ ${sectionContent}
 Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no markdown or extra text.`;
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o',
             messages: [
                 {
                     role: 'system',
@@ -113,7 +179,7 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
                     content: userPrompt,
                 },
             ],
-            temperature: 0.7,
+            temperature: 0.9,
             max_tokens: 2048,
         });
 
@@ -130,8 +196,14 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
         try {
             parsedResponse = JSON.parse(content);
         } catch (e) {
-            console.error(`Failed to parse OpenAI section response for ${sectionName}`);
-            throw new Error(`Invalid JSON response from OpenAI for ${sectionName}: ${e.message}`);
+            // Try to repair incomplete JSON
+            try {
+                const repairedContent = repairIncompleteJSON(content);
+                parsedResponse = JSON.parse(repairedContent);
+            } catch (e2) {
+                console.error(`Failed to parse OpenAI section response for ${sectionName}`);
+                throw new Error(`Invalid JSON response from OpenAI for ${sectionName}: ${e.message}`);
+            }
         }
 
         // Validate section response structure
@@ -140,6 +212,15 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
         }
         if (!parsedResponse.keywordMatches || !Array.isArray(parsedResponse.keywordMatches)) {
             parsedResponse.keywordMatches = [];
+        }
+
+        // Fill in missing reasons
+        if (parsedResponse.suggestions && Array.isArray(parsedResponse.suggestions)) {
+            parsedResponse.suggestions.forEach(suggestion => {
+                if (!suggestion.reason || typeof suggestion.reason !== 'string') {
+                    suggestion.reason = 'Improves ATS alignment';
+                }
+            });
         }
 
         return {

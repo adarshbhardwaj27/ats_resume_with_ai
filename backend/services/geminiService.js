@@ -4,12 +4,12 @@ const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords } = require('./aiCom
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 /**
- * Sanitize JSON string by escaping unescaped newlines and control characters within string values
+ * Repair incomplete/truncated JSON by finding the last complete object
  */
-function sanitizeJSONString(jsonString) {
-    // Replace actual newlines, tabs, and carriage returns with escape sequences
-    // This handles cases where LaTeX content contains actual newlines inside JSON string values
-    let result = '';
+function repairIncompleteJSON(jsonString) {
+    // Try to find last complete object by counting braces
+    let braceCount = 0;
+    let lastCompleteIndex = -1;
     let inString = false;
     let escapeNext = false;
 
@@ -17,40 +17,39 @@ function sanitizeJSONString(jsonString) {
         const char = jsonString[i];
 
         if (escapeNext) {
-            result += char;
             escapeNext = false;
             continue;
         }
 
         if (char === '\\') {
-            result += char;
             escapeNext = true;
             continue;
         }
 
-        if (char === '"' && !escapeNext) {
+        if (char === '"') {
             inString = !inString;
-            result += char;
             continue;
         }
 
-        if (inString) {
-            // Within a string value - escape control characters
-            if (char === '\n') {
-                result += '\\n';
-            } else if (char === '\r') {
-                result += '\\r';
-            } else if (char === '\t') {
-                result += '\\t';
-            } else {
-                result += char;
+        if (!inString) {
+            if (char === '{' || char === '[') {
+                braceCount++;
+            } else if (char === '}' || char === ']') {
+                braceCount--;
+                if (braceCount === 0) {
+                    lastCompleteIndex = i;
+                }
             }
-        } else {
-            result += char;
         }
     }
 
-    return result;
+    // If we found a complete object, use everything up to and including that
+    if (lastCompleteIndex > 0) {
+        return jsonString.substring(0, lastCompleteIndex + 1);
+    }
+
+    // Otherwise, try to add a minimal closing
+    return jsonString;
 }
 
 async function analyzeResume(latexResume, jobDescription) {
@@ -73,6 +72,8 @@ ${latexResume}
 Job Description:
 ${jobDescription}
 
+Generate 10-15 comprehensive, specific suggestions for improvement.
+
 RESPOND WITH THIS JSON STRUCTURE ONLY (no markdown, no backticks, no extra text):
 {
   "changes": [
@@ -91,10 +92,10 @@ Ensure each change object has all three fields. Keep reasons concise but complet
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
             generationConfig: {
-                temperature: 0.7,
+                temperature: 0.9,
                 topK: 40,
                 topP: 0.95,
-                maxOutputTokens: 4096,
+                maxOutputTokens: 16384,
             },
         });
 
@@ -114,15 +115,16 @@ Ensure each change object has all three fields. Keep reasons concise but complet
         try {
             parsedResponse = JSON.parse(content);
         } catch (e) {
-            // Try to fix unescaped newlines and control characters in JSON strings
+            // Try to repair incomplete JSON
             try {
-                content = sanitizeJSONString(content);
-                parsedResponse = JSON.parse(content);
+                const repairedContent = repairIncompleteJSON(content);
+                parsedResponse = JSON.parse(repairedContent);
             } catch (e2) {
                 // Log more detailed error info for debugging
                 console.error('Failed to parse Gemini response');
                 console.error('Raw response length:', content.length);
                 console.error('First 500 chars:', content.substring(0, 500));
+                console.error('Last 200 chars:', content.substring(Math.max(0, content.length - 200)));
                 console.error('Parse error:', e.message);
                 throw new Error(`Invalid JSON response from Gemini: ${e.message}`);
             }
@@ -137,7 +139,7 @@ Ensure each change object has all three fields. Keep reasons concise but complet
             throw new Error('No changes provided in response');
         }
 
-        // Validate each change object
+        // Validate each change object, add default reason if missing
         parsedResponse.changes.forEach((change, index) => {
             if (!change.original || typeof change.original !== 'string') {
                 throw new Error(`Change ${index}: missing or invalid 'original' field`);
@@ -145,8 +147,9 @@ Ensure each change object has all three fields. Keep reasons concise but complet
             if (!change.updated || typeof change.updated !== 'string') {
                 throw new Error(`Change ${index}: missing or invalid 'updated' field`);
             }
+            // Reason may be cut off due to truncation, provide default
             if (!change.reason || typeof change.reason !== 'string') {
-                throw new Error(`Change ${index}: missing or invalid 'reason' field`);
+                change.reason = 'Improves ATS alignment with job requirements';
             }
         });
 
@@ -191,10 +194,10 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: sectionPrompt + '\n\n' + userPrompt }] }],
             generationConfig: {
-                temperature: 0.7,
+                temperature: 0.9,
                 topK: 40,
                 topP: 0.95,
-                maxOutputTokens: 4096,
+                maxOutputTokens: 16384,
             },
         });
 
@@ -214,11 +217,10 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
         try {
             parsedResponse = JSON.parse(content);
         } catch (e) {
-            // Try to fix unescaped newlines and control characters in JSON strings
+            // Try to repair incomplete JSON
             try {
-                // Replace actual newlines/tabs inside string values with escape sequences
-                content = sanitizeJSONString(content);
-                parsedResponse = JSON.parse(content);
+                const repairedContent = repairIncompleteJSON(content);
+                parsedResponse = JSON.parse(repairedContent);
             } catch (e2) {
                 console.error(`Failed to parse Gemini section response for ${sectionName}`);
                 console.error('Raw response length:', content.length);
@@ -234,6 +236,15 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
         }
         if (!parsedResponse.keywordMatches || !Array.isArray(parsedResponse.keywordMatches)) {
             parsedResponse.keywordMatches = [];
+        }
+
+        // Fill in missing reasons
+        if (parsedResponse.suggestions && Array.isArray(parsedResponse.suggestions)) {
+            parsedResponse.suggestions.forEach(suggestion => {
+                if (!suggestion.reason || typeof suggestion.reason !== 'string') {
+                    suggestion.reason = 'Improves ATS alignment';
+                }
+            });
         }
 
         return {

@@ -1,10 +1,6 @@
 const express = require('express');
 const aiService = require('../services/aiService');
-const openaiService = require('../services/openaiService');
-const geminiService = require('../services/geminiService');
 const { compilePdf } = require('../services/pdfService');
-const { extractSections } = require('../services/sectionExtractor');
-const { analyzeSectionForATS, SECTION_PROMPTS } = require('../services/sectionAnalyzer');
 
 const router = express.Router();
 
@@ -32,127 +28,10 @@ router.post('/analyze', async (req, res) => {
             });
         }
 
-        // Extract sections for analysis
-        const sections = extractSections(latex);
+        // Single API call to analyze full resume
+        const result = await aiService.analyzeResume(latex, jobDescription);
 
-        if (Object.keys(sections).length === 0) {
-            // Fallback: if no sections extracted, analyze full resume
-            const result = await aiService.analyzeResume(latex, jobDescription);
-            return res.json(result);
-        }
-
-        // Analyze each section separately to prevent hallucination
-        const allChanges = [];
-        const allKeywords = new Set();
-        let totalScore = 0;
-        let sectionCount = 0;
-        let geminiFailureReason = null;
-
-        for (const [sectionKey, section] of Object.entries(sections)) {
-            try {
-                console.log(`Analyzing section: ${section.label}`);
-
-                const sectionResult = await analyzeSectionForATS(
-                    sectionKey,
-                    section.content,
-                    jobDescription
-                );
-
-                // Collect changes
-                if (sectionResult.improvements && sectionResult.improvements.suggestions) {
-                    allChanges.push(...sectionResult.improvements.suggestions);
-                }
-
-                // Collect keywords
-                if (sectionResult.improvements && sectionResult.improvements.keywordMatches) {
-                    sectionResult.improvements.keywordMatches.forEach(kw => allKeywords.add(kw));
-                }
-
-                // Accumulate score
-                if (sectionResult.improvements && sectionResult.improvements.matchScore) {
-                    totalScore += sectionResult.improvements.matchScore;
-                    sectionCount++;
-                }
-            } catch (sectionErr) {
-                console.error(`Error analyzing ${section.label}:`, sectionErr.message);
-
-                // Check if this is a rate limit error (429) or quota exceeded from Gemini
-                const isRateLimitError = sectionErr.message.includes('429') ||
-                    sectionErr.message.includes('Quota exceeded') ||
-                    sectionErr.message.includes('quota');
-
-                if (isRateLimitError && !geminiFailureReason) {
-                    geminiFailureReason = sectionErr.message;
-                    console.log(`Gemini rate limit detected, using OpenAI fallback for remaining sections`);
-
-                    // Fall back to OpenAI for this section
-                    try {
-                        const sectionPrompt = SECTION_PROMPTS[sectionKey];
-                        const fallbackResult = await openaiService.analyzeSectionForATS(
-                            sectionKey,
-                            section.content,
-                            jobDescription,
-                            sectionPrompt
-                        );
-
-                        if (fallbackResult.suggestions) {
-                            allChanges.push(...fallbackResult.suggestions);
-                        }
-                        if (fallbackResult.keywordMatches) {
-                            fallbackResult.keywordMatches.forEach(kw => allKeywords.add(kw));
-                        }
-                        if (fallbackResult.matchScore !== undefined) {
-                            totalScore += fallbackResult.matchScore;
-                            sectionCount++;
-                        }
-                        console.log(`Successfully analyzed ${section.label} using OpenAI fallback`);
-                    } catch (fallbackErr) {
-                        console.error(`Fallback also failed for ${section.label}:`, fallbackErr.message);
-                        // Continue with next section
-                    }
-                } else {
-                    // For non-rate-limit errors or if already switched to fallback, just continue
-                    if (geminiFailureReason) {
-                        // Already switched to fallback, try OpenAI for this section
-                        try {
-                            const sectionPrompt = SECTION_PROMPTS[sectionKey];
-                            const fallbackResult = await openaiService.analyzeSectionForATS(
-                                sectionKey,
-                                section.content,
-                                jobDescription,
-                                sectionPrompt
-                            );
-
-                            if (fallbackResult.suggestions) {
-                                allChanges.push(...fallbackResult.suggestions);
-                            }
-                            if (fallbackResult.keywordMatches) {
-                                fallbackResult.keywordMatches.forEach(kw => allKeywords.add(kw));
-                            }
-                            if (fallbackResult.matchScore !== undefined) {
-                                totalScore += fallbackResult.matchScore;
-                                sectionCount++;
-                            }
-                        } catch (fallbackErr) {
-                            console.error(`OpenAI fallback also failed for ${section.label}:`, fallbackErr.message);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Calculate average match score
-        const matchScore = sectionCount > 0 ? Math.round(totalScore / sectionCount) : 0;
-
-        res.json({
-            changes: allChanges,
-            matchScore,
-            jobKeywords: Array.from(allKeywords),
-            analysisMeta: {
-                method: 'section-by-section',
-                sectionsAnalyzed: sectionCount,
-            },
-        });
+        res.json(result);
     } catch (error) {
         console.error('API Error:', error);
 

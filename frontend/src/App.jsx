@@ -32,23 +32,84 @@ function App() {
     }
   };
 
+  const applyChangeToLatex = (currentLatex, change) => {
+    // Try exact match first
+    if (currentLatex.includes(change.original)) {
+      return currentLatex.replaceAll(change.original, change.updated);
+    }
+
+    // Try matching with normalized whitespace
+    const normalizedOriginal = change.original.trim();
+    const lines = currentLatex.split("\n");
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(normalizedOriginal)) {
+        lines[i] = lines[i].replaceAll(
+          normalizedOriginal,
+          change.updated.trim(),
+        );
+        return lines.join("\n");
+      }
+    }
+
+    // If no match found, try fuzzy matching - find lines that contain most of the key words
+    const keywords = normalizedOriginal
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+    for (let i = 0; i < lines.length; i++) {
+      const matchCount = keywords.filter((k) =>
+        lines[i].toLowerCase().includes(k.toLowerCase()),
+      ).length;
+      if (matchCount >= Math.ceil(keywords.length * 0.6)) {
+        // Replace the line if it contains at least 60% of key keywords
+        lines[i] = change.updated.trim();
+        return lines.join("\n");
+      }
+    }
+
+    // If still no match, return unchanged (change not applied)
+    console.warn("Could not find text to replace:", change.original);
+    return currentLatex;
+  };
+
   const handleApplyChange = (index) => {
     const change = changes[index];
-    const updatedLatex = latex.replace(change.original, change.updated);
-    setLatex(updatedLatex);
+    const updatedLatex = applyChangeToLatex(latex, change);
 
-    // Remove applied change from display
-    const newChanges = changes.filter((_, i) => i !== index);
-    setChanges(newChanges);
+    if (updatedLatex !== latex) {
+      setLatex(updatedLatex);
+      // Remove applied change from display
+      const newChanges = changes.filter((_, i) => i !== index);
+      setChanges(newChanges);
+    } else {
+      setError(
+        "Could not apply change: text not found in LaTeX. Try editing manually.",
+      );
+    }
   };
 
   const handleApplyAllChanges = () => {
     let updatedLatex = latex;
+    let appliedCount = 0;
+
     changes.forEach((change) => {
-      updatedLatex = updatedLatex.replace(change.original, change.updated);
+      const newLatex = applyChangeToLatex(updatedLatex, change);
+      if (newLatex !== updatedLatex) {
+        updatedLatex = newLatex;
+        appliedCount++;
+      }
     });
+
     setLatex(updatedLatex);
     setChanges([]); // Clear all changes after applying
+
+    if (appliedCount > 0) {
+      setError(""); // Clear any previous errors
+    } else {
+      setError(
+        "No changes could be applied. The original text may not match exactly.",
+      );
+    }
   };
 
   return (

@@ -5,15 +5,17 @@ You will be given:
 2. A job description
 
 Your task:
-- Identify relevant keywords from the job description
-- Compare with resume
-- Suggest ONLY minimal line-level edits
+- Identify relevant keywords and requirements from the job description
+- Compare with resume and find ALL opportunities for improvement
+- Suggest COMPREHENSIVE, IN-DEPTH line-level edits to maximize ATS alignment and impact
+- Provide 10-15 specific, actionable changes
 
 STRICT RULES:
 - DO NOT rewrite entire resume
 - DO NOT modify LaTeX commands
 - ONLY edit content inside lines
 - DO NOT hallucinate experience
+- Generate as many relevant suggestions as possible
 - Return ONLY valid JSON, no other text
 
 OUTPUT:
