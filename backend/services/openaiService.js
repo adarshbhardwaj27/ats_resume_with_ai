@@ -1,5 +1,5 @@
 const OpenAI = require('openai');
-const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords, repairIncompleteJSON } = require('./aiCommon');
+const { SYSTEM_PROMPT, calculateMatchScore, extractKeywordStrings, repairIncompleteJSON } = require('./aiCommon');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -82,8 +82,8 @@ Analyze this resume comprehensively against the job description and provide 10-1
             }
         });
 
-        // Calculate match score (0-100)
-        const matchScore = calculateMatchScore(
+        // Calculate detailed match score with gap analysis
+        const scoreData = calculateMatchScore(
             latexResume,
             jobDescription,
             parsedResponse.changes
@@ -91,8 +91,11 @@ Analyze this resume comprehensively against the job description and provide 10-1
 
         return {
             changes: parsedResponse.changes,
-            matchScore,
-            jobKeywords: extractKeywords(jobDescription),
+            matchScore: scoreData.score,
+            jobKeywords: extractKeywordStrings(jobDescription),
+            foundKeywords: scoreData.foundKeywords,
+            missingKeywords: scoreData.missingKeywords,
+            categories: scoreData.categories,
         };
     } catch (error) {
         console.error('Error analyzing resume:', error.message);
@@ -178,7 +181,7 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
             sectionContent: parsedResponse.sectionContent || sectionContent,
             suggestions: parsedResponse.suggestions,
             keywordMatches: parsedResponse.keywordMatches,
-            matchScore: calculateMatchScore(sectionContent, jobDescription, parsedResponse.suggestions),
+            matchScore: calculateMatchScore(sectionContent, jobDescription, parsedResponse.suggestions).score,
         };
     } catch (error) {
         console.error(`Error analyzing section ${sectionName} with OpenAI:`, error.message);

@@ -13,6 +13,8 @@ function App() {
   const [changes, setChanges] = useState([]);
   const [matchScore, setMatchScore] = useState(0);
   const [keywords, setKeywords] = useState([]);
+  const [foundKeywords, setFoundKeywords] = useState([]);
+  const [missingKeywords, setMissingKeywords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,6 +28,8 @@ function App() {
       setChanges(result.changes);
       setMatchScore(result.matchScore);
       setKeywords(result.jobKeywords);
+      setFoundKeywords(result.foundKeywords || []);
+      setMissingKeywords(result.missingKeywords || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -165,6 +169,8 @@ function App() {
                 changes={changes}
                 matchScore={matchScore}
                 keywords={keywords}
+                foundKeywords={foundKeywords}
+                missingKeywords={missingKeywords}
                 onApplyChange={handleApplyChange}
                 onApplyAll={handleApplyAllChanges}
               />

@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords, repairIncompleteJSON } = require('./aiCommon');
+const { SYSTEM_PROMPT, calculateMatchScore, extractKeywordStrings, repairIncompleteJSON } = require('./aiCommon');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -108,8 +108,8 @@ Ensure each change object has all three fields. Keep reasons concise but complet
             }
         });
 
-        // Calculate match score (0-100)
-        const matchScore = calculateMatchScore(
+        // Calculate detailed match score with gap analysis
+        const scoreData = calculateMatchScore(
             latexResume,
             jobDescription,
             parsedResponse.changes
@@ -117,8 +117,11 @@ Ensure each change object has all three fields. Keep reasons concise but complet
 
         return {
             changes: parsedResponse.changes,
-            matchScore,
-            jobKeywords: extractKeywords(jobDescription),
+            matchScore: scoreData.score,
+            jobKeywords: extractKeywordStrings(jobDescription),
+            foundKeywords: scoreData.foundKeywords,
+            missingKeywords: scoreData.missingKeywords,
+            categories: scoreData.categories,
         };
     } catch (error) {
         console.error('Error analyzing resume with Gemini:', error.message);
@@ -210,7 +213,7 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
             sectionContent: parsedResponse.sectionContent || sectionContent,
             suggestions: parsedResponse.suggestions,
             keywordMatches: parsedResponse.keywordMatches,
-            matchScore: calculateMatchScore(sectionContent, jobDescription, parsedResponse.suggestions),
+            matchScore: calculateMatchScore(sectionContent, jobDescription, parsedResponse.suggestions).score,
         };
     } catch (error) {
         console.error(`Error analyzing section ${sectionName} with Gemini:`, error.message);
