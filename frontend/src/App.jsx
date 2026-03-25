@@ -3,6 +3,7 @@ import { InputForm } from "./components/InputForm";
 import { ChangesList } from "./components/ChangesList";
 import { LaTeXPreview } from "./components/LaTeXPreview";
 import { ErrorMessage } from "./components/ErrorMessage";
+import { SectionAnalyzer } from "./components/SectionAnalyzer";
 import { analyzeResume } from "./services/api";
 import "./index.css";
 
@@ -33,9 +34,14 @@ function App() {
   };
 
   const applyChangeToLatex = (currentLatex, change) => {
-    // Try exact match first
+    // Try exact match first (replace only the first occurrence)
     if (currentLatex.includes(change.original)) {
-      return currentLatex.replaceAll(change.original, change.updated);
+      const idx = currentLatex.indexOf(change.original);
+      return (
+        currentLatex.slice(0, idx) +
+        change.updated +
+        currentLatex.slice(idx + change.original.length)
+      );
     }
 
     // Try matching with normalized whitespace
@@ -44,10 +50,7 @@ function App() {
 
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].includes(normalizedOriginal)) {
-        lines[i] = lines[i].replaceAll(
-          normalizedOriginal,
-          change.updated.trim(),
-        );
+        lines[i] = lines[i].replace(normalizedOriginal, change.updated.trim());
         return lines.join("\n");
       }
     }
@@ -56,14 +59,15 @@ function App() {
     const keywords = normalizedOriginal
       .split(/\s+/)
       .filter((w) => w.length > 3);
-    for (let i = 0; i < lines.length; i++) {
-      const matchCount = keywords.filter((k) =>
-        lines[i].toLowerCase().includes(k.toLowerCase()),
-      ).length;
-      if (matchCount >= Math.ceil(keywords.length * 0.6)) {
-        // Replace the line if it contains at least 60% of key keywords
-        lines[i] = change.updated.trim();
-        return lines.join("\n");
+    if (keywords.length > 0) {
+      for (let i = 0; i < lines.length; i++) {
+        const matchCount = keywords.filter((k) =>
+          lines[i].toLowerCase().includes(k.toLowerCase()),
+        ).length;
+        if (matchCount >= Math.ceil(keywords.length * 0.7)) {
+          lines[i] = change.updated.trim();
+          return lines.join("\n");
+        }
       }
     }
 
@@ -176,11 +180,22 @@ function App() {
             />
           </div>
         </div>
+        {/* Section-by-Section Analysis */}
+        {latex && jobDescription && (
+          <div className="mt-8">
+            <SectionAnalyzer
+              latex={latex}
+              jobDescription={jobDescription}
+              onUpdateLatex={setLatex}
+            />
+          </div>
+        )}
+
         {/* Footer */}
         <div className="mt-12 text-center text-gray-500 text-sm">
           <p>
-            Resume Tailor uses OpenAI to provide minimal, targeted edits to
-            improve ATS alignment
+            Resume Tailor uses AI to provide minimal, targeted edits to improve
+            ATS alignment
           </p>
         </div>
       </div>

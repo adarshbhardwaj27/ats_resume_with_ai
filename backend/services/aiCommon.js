@@ -34,10 +34,14 @@ If no changes needed, return: {"changes": []}`;
 
 function calculateMatchScore(resume, jobDescription, changes) {
     const resumeText = resume.toLowerCase();
-    const jobText = jobDescription.toLowerCase();
 
     // Extract keywords from job description
     const keywords = extractKeywords(jobDescription);
+
+    // Guard against division by zero
+    if (keywords.length === 0) {
+        return Math.min(100, Math.min((changes || []).length * 10, 40));
+    }
 
     // Count how many keywords are found in resume
     const foundKeywords = keywords.filter((keyword) =>
@@ -47,7 +51,7 @@ function calculateMatchScore(resume, jobDescription, changes) {
     const keywordMatchScore = (foundKeywords.length / keywords.length) * 100;
 
     // Calculate change impact (more changes = more potential improvement)
-    const changeImpactScore = Math.min(changes.length * 10, 40);
+    const changeImpactScore = Math.min((changes || []).length * 10, 40);
 
     // Combined score
     const score = Math.round(
@@ -60,7 +64,10 @@ function calculateMatchScore(resume, jobDescription, changes) {
 function extractKeywords(jobDescription) {
     // Extract meaningful words (remove common stop words)
     const stopWords = new Set([
-        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'is', 'are', 'was', 'were', 'been', 'be', 'as', 'by', 'this', 'that', 'with', 'from', 'up', 'about', 'into', 'through', 'during',
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'is', 'are', 'was', 'were',
+    'been', 'be', 'as', 'by', 'this', 'that', 'with', 'from', 'up', 'about', 'into', 'through', 'during',
+    'will', 'can', 'should', 'would', 'could', 'may', 'must', 'have', 'has', 'had', 'do', 'does', 'did',
+    'not', 'no', 'we', 'you', 'your', 'our', 'they', 'their', 'its', 'all', 'each', 'every', 'any', 'some',
     ]);
 
     const words = jobDescription
@@ -79,8 +86,55 @@ function extractKeywords(jobDescription) {
     return keywords;
 }
 
+/**
+ * Repair incomplete/truncated JSON by finding the last complete object
+ */
+function repairIncompleteJSON(jsonString) {
+    let braceCount = 0;
+    let lastCompleteIndex = -1;
+    let inString = false;
+    let escapeNext = false;
+
+    for (let i = 0; i < jsonString.length; i++) {
+        const char = jsonString[i];
+
+        if (escapeNext) {
+            escapeNext = false;
+            continue;
+        }
+
+        if (char === '\\') {
+            escapeNext = true;
+            continue;
+        }
+
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (!inString) {
+            if (char === '{' || char === '[') {
+                braceCount++;
+            } else if (char === '}' || char === ']') {
+                braceCount--;
+                if (braceCount === 0) {
+                    lastCompleteIndex = i;
+                }
+            }
+        }
+    }
+
+    if (lastCompleteIndex > 0) {
+        return jsonString.substring(0, lastCompleteIndex + 1);
+    }
+
+    return jsonString;
+}
+
 module.exports = {
     SYSTEM_PROMPT,
     calculateMatchScore,
     extractKeywords,
+    repairIncompleteJSON,
 };

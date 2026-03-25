@@ -1,6 +1,8 @@
 const express = require('express');
 const aiService = require('../services/aiService');
 const { compilePdf } = require('../services/pdfService');
+const { extractSections } = require('../services/sectionExtractor');
+const { analyzeSectionForATS } = require('../services/sectionAnalyzer');
 
 const router = express.Router();
 

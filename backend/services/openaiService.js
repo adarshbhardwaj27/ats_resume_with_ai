@@ -1,58 +1,9 @@
 const OpenAI = require('openai');
-const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords } = require('./aiCommon');
+const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords, repairIncompleteJSON } = require('./aiCommon');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
-
-/**
- * Repair incomplete/truncated JSON by finding the last complete object
- */
-function repairIncompleteJSON(jsonString) {
-    // Try to find last complete object by counting braces
-    let braceCount = 0;
-    let lastCompleteIndex = -1;
-    let inString = false;
-    let escapeNext = false;
-
-    for (let i = 0; i < jsonString.length; i++) {
-        const char = jsonString[i];
-
-        if (escapeNext) {
-            escapeNext = false;
-            continue;
-        }
-
-        if (char === '\\') {
-            escapeNext = true;
-            continue;
-        }
-
-        if (char === '"') {
-            inString = !inString;
-            continue;
-        }
-
-        if (!inString) {
-            if (char === '{' || char === '[') {
-                braceCount++;
-            } else if (char === '}' || char === ']') {
-                braceCount--;
-                if (braceCount === 0) {
-                    lastCompleteIndex = i;
-                }
-            }
-        }
-    }
-
-    // If we found a complete object, use everything up to and including that
-    if (lastCompleteIndex > 0) {
-        return jsonString.substring(0, lastCompleteIndex + 1);
-    }
-
-    // Otherwise, try to add a minimal closing
-    return jsonString;
-}
 
 async function analyzeResume(latexResume, jobDescription) {
     try {
@@ -85,7 +36,7 @@ Analyze this resume comprehensively against the job description and provide 10-1
                     content: userPrompt,
                 },
             ],
-            temperature: 0.9,
+            temperature: 0.3,
             max_tokens: 8000,
         });
 
@@ -179,7 +130,7 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
                     content: userPrompt,
                 },
             ],
-            temperature: 0.9,
+            temperature: 0.3,
             max_tokens: 2048,
         });
 

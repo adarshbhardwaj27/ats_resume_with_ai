@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { Copy, Download, Eye } from "lucide-react";
 
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+
 export function LaTeXPreview({ latex, onApplyAll, changes }) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -18,7 +21,7 @@ export function LaTeXPreview({ latex, onApplyAll, changes }) {
   const handleDownloadPDF = async () => {
     setDownloading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/compile-pdf", {
+      const response = await fetch(`${API_BASE_URL}/compile-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex }),
@@ -45,7 +48,6 @@ export function LaTeXPreview({ latex, onApplyAll, changes }) {
   };
 
   const handleViewPreview = () => {
-    // Open Overleaf with the LaTeX code
     const encodedLatex = encodeURIComponent(latex);
     window.open(`https://www.overleaf.com/docs?snip=${encodedLatex}`, "_blank");
   };
@@ -53,10 +55,12 @@ export function LaTeXPreview({ latex, onApplyAll, changes }) {
   const handleDownloadLatex = () => {
     const element = document.createElement("a");
     const file = new Blob([latex], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    element.href = url;
     element.download = "resume.tex";
     document.body.appendChild(element);
     element.click();
+    URL.revokeObjectURL(url);
     document.body.removeChild(element);
   };
 

@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+
 export function SectionAnalyzer({ latex, jobDescription, onUpdateLatex }) {
   const [sections, setSections] = useState({});
   const [loading, setLoading] = useState(false);
@@ -11,7 +14,7 @@ export function SectionAnalyzer({ latex, jobDescription, onUpdateLatex }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("http://localhost:5000/api/sections", {
+      const response = await fetch(`${API_BASE_URL}/sections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex }),
@@ -39,18 +42,15 @@ export function SectionAnalyzer({ latex, jobDescription, onUpdateLatex }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/analyze-section",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sectionName,
-            sectionContent: sections[sectionName].content,
-            jobDescription,
-          }),
-        },
-      );
+      const response = await fetch(`${API_BASE_URL}/analyze-section`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sectionName,
+          sectionContent: sections[sectionName].content,
+          jobDescription,
+        }),
+      });
 
       if (!response.ok) throw new Error("Failed to analyze section");
       const data = await response.json();

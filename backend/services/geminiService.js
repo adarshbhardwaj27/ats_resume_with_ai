@@ -1,56 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords } = require('./aiCommon');
+const { SYSTEM_PROMPT, calculateMatchScore, extractKeywords, repairIncompleteJSON } = require('./aiCommon');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-/**
- * Repair incomplete/truncated JSON by finding the last complete object
- */
-function repairIncompleteJSON(jsonString) {
-    // Try to find last complete object by counting braces
-    let braceCount = 0;
-    let lastCompleteIndex = -1;
-    let inString = false;
-    let escapeNext = false;
-
-    for (let i = 0; i < jsonString.length; i++) {
-        const char = jsonString[i];
-
-        if (escapeNext) {
-            escapeNext = false;
-            continue;
-        }
-
-        if (char === '\\') {
-            escapeNext = true;
-            continue;
-        }
-
-        if (char === '"') {
-            inString = !inString;
-            continue;
-        }
-
-        if (!inString) {
-            if (char === '{' || char === '[') {
-                braceCount++;
-            } else if (char === '}' || char === ']') {
-                braceCount--;
-                if (braceCount === 0) {
-                    lastCompleteIndex = i;
-                }
-            }
-        }
-    }
-
-    // If we found a complete object, use everything up to and including that
-    if (lastCompleteIndex > 0) {
-        return jsonString.substring(0, lastCompleteIndex + 1);
-    }
-
-    // Otherwise, try to add a minimal closing
-    return jsonString;
-}
 
 async function analyzeResume(latexResume, jobDescription) {
     try {
@@ -92,7 +43,7 @@ Ensure each change object has all three fields. Keep reasons concise but complet
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
             generationConfig: {
-                temperature: 0.9,
+                temperature: 0.3,
                 topK: 40,
                 topP: 0.95,
                 maxOutputTokens: 16384,
@@ -104,11 +55,15 @@ Ensure each change object has all three fields. Keep reasons concise but complet
 
         // Remove all markdown code fence markers and language identifiers
         content = content
-            .replace(/^```(json)?[\s\n]*/i, '') // Remove opening fence with optional "json"
-            .replace(/[\s\n]*```$/i, '') // Remove closing fence
-            .replace(/^json[\s\n]*/i, '') // Remove "json" marker at start (no backticks)
-            .replace(/^(.*?)(\{[\s\S]*)$/, '$2') // Keep everything from first `{` onwards
+            .replace(/```(json)?[\s\n]*/gi, '') // Remove all code fence markers
+            .replace(/^json[\s\n]*/i, '') // Remove "json" marker at start
             .trim();
+
+        // Extract JSON object/array from surrounding text
+        const jsonStart = content.indexOf('{');
+        if (jsonStart > 0) {
+            content = content.substring(jsonStart);
+        }
 
         // Parse and validate JSON response
         let parsedResponse;
@@ -194,7 +149,7 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: sectionPrompt + '\n\n' + userPrompt }] }],
             generationConfig: {
-                temperature: 0.9,
+                temperature: 0.3,
                 topK: 40,
                 topP: 0.95,
                 maxOutputTokens: 16384,
@@ -206,11 +161,15 @@ Analyze and tailor this section for ATS matching. Return ONLY valid JSON with no
 
         // Remove all markdown code fence markers and language identifiers
         content = content
-            .replace(/^```(json)?[\s\n]*/i, '') // Remove opening fence with optional "json"
-            .replace(/[\s\n]*```$/i, '') // Remove closing fence
-            .replace(/^json[\s\n]*/i, '') // Remove "json" marker at start (no backticks)
-            .replace(/^(.*?)(\{[\s\S]*)$/, '$2') // Keep everything from first `{` onwards
+            .replace(/```(json)?[\s\n]*/gi, '') // Remove all code fence markers
+            .replace(/^json[\s\n]*/i, '') // Remove "json" marker at start
             .trim();
+
+        // Extract JSON object from surrounding text
+        const sectionJsonStart = content.indexOf('{');
+        if (sectionJsonStart > 0) {
+            content = content.substring(sectionJsonStart);
+        }
 
         // Parse and validate JSON response
         let parsedResponse;
